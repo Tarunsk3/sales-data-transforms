@@ -1,0 +1,8 @@
+-- definitions/sources/bronze_sales.sqlx
+
+config {
+  type: "declaration",
+  database: "single-beaker-450806-c8",
+  schema: "bronze_layer",
+  name: "sales_transactions"
+}
