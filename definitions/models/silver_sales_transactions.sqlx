@@ -7,21 +7,28 @@ config {
     uniqueKey: ["sale_id"],
     nonNull: ["sale_id", "cust_id", "product_id", "sale_timestamp"],
     rowConditions: [
-      "total_cost = (qty * unit_price)"
+      "total_cost = (quantity * unit_price)"
     ]
   }
 }
 
--- This is the main transformation logic
+-- We will use a Common Table Expression (CTE) to handle duplicates
+WITH sales_with_row_number AS (
+  SELECT
+    *,
+    ROW_NUMBER() OVER(PARTITION BY sale_id ORDER BY timestamp DESC) as rn
+  FROM
+    ${ref("sales_transactions")}
+    ${when(incremental(), `WHERE _load_date >= (SELECT MAX(_load_date) FROM ${self()})`)}
+)
+
 SELECT
-    -- IDs and Timestamps
+    -- (All your columns from before: sale_id, store_id, etc.)
     sale_id,
     store_id,
     CAST(cust_id AS INT64) AS cust_id,
     CAST(timestamp AS TIMESTAMP) AS sale_timestamp,
-    _load_date, -- We keep the load date for lineage and debugging
-
-    -- Customer Information (Cleaned)
+    _load_date,
     TRIM(cust_name) AS cust_name,
     LOWER(TRIM(email)) AS email,
     TRIM(contact) AS contact,
@@ -29,21 +36,13 @@ SELECT
     UPPER(TRIM(state)) AS state,
     UPPER(TRIM(country)) AS country,
     TRIM(loyalty) AS loyalty,
-    
-    -- Product Information (Cleaned)
     product_id,
     TRIM(product) AS product,
     TRIM(product_category) AS product_category,
-    
-    -- Financials (Casted to correct types)
     CAST(qty AS INT64) AS quantity,
     CAST(unit_price AS NUMERIC) AS unit_price,
     CAST(total_cost AS NUMERIC) AS total_cost
-
-FROM ${ref("sales_transactions")} -- This ref() function connects this model to our source
-
--- This WHERE clause makes our model incremental. It only processes new data.
--- On the first run, this clause is ignored. On subsequent runs, it only
--- selects records from the bronze table where the _load_date is newer
--- than the latest _load_date already present in this silver table.
-${when(incremental(), `WHERE _load_date >= (SELECT MAX(_load_date) FROM ${self()})`)}
+FROM 
+  sales_with_row_number
+WHERE 
+  rn = 1 -- This is the magic line that filters for only the first occurrence of each sale_id
