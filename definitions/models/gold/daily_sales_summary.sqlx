@@ -1,0 +1,40 @@
+-- definitions/models/gold/daily_sales_summary.sqlx
+
+config {
+  type: "incremental",
+  schema: "gold_layer",
+  description: "A daily summary of sales, aggregated by store and product. Updated incrementally.",
+  uniqueKey: ["sale_date", "store_id", "product_id"]
+}
+
+-- The main transformation logic to aggregate silver-layer data
+SELECT
+    -- Dimensions (The 'by' attributes for grouping)
+    DATE(sale_timestamp) AS sale_date,
+    store_id,
+    city,
+    state,
+    country,
+    product_id,
+    product,
+    product_category,
+    
+    -- Metrics (The aggregated values)
+    SUM(total_cost) AS total_revenue,
+    SUM(quantity) AS total_quantity_sold,
+    COUNT(DISTINCT sale_id) AS number_of_transactions,
+    SAFE_DIVIDE(SUM(total_cost), COUNT(DISTINCT sale_id)) AS average_transaction_value,
+    
+    -- VERY IMPORTANT: We add the load date for downstream incremental processing
+    MAX(_load_date) AS last_processed_load_date
+
+FROM 
+    ${ref("silver_sales_transactions")}
+
+-- This WHERE clause is only active on incremental runs
+${when(incremental(), 
+    `WHERE _load_date > (SELECT MAX(last_processed_load_date) FROM ${self()})`
+)}
+
+GROUP BY
+    1, 2, 3, 4, 5, 6, 7, 8

@@ -19,7 +19,7 @@ WITH sales_with_row_number AS (
     ROW_NUMBER() OVER(PARTITION BY sale_id ORDER BY timestamp DESC) as rn
   FROM
     ${ref("sales_transactions")}
-    ${when(incremental(), `WHERE _load_date >= (SELECT MAX(_load_date) FROM ${self()})`)}
+    ${when(incremental(), `WHERE _load_date > (SELECT MAX(_load_date) FROM ${self()})`)}
 )
 
 SELECT
